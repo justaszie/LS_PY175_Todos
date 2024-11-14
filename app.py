@@ -1,5 +1,6 @@
 from flask import Flask, render_template, redirect, url_for, request, session, flash
 from uuid import uuid4
+from utils import error_for_list_title
 
 app = Flask(__name__)
 app.secret_key = 'secret1'
@@ -20,21 +21,19 @@ def lists():
         return render_template('lists.html', lists=session['lists'], example=None)
     if request.method == 'POST':
         title = request.form.get('list_title').strip()
-        if any(title.lower() == lst['title'].lower() for lst in session['lists']):
-            flash(f'Error: {title} already exists.', 'error')
+        error = error_for_list_title(title, session['lists'])
+        if error:
+            flash(error, 'error')
             return render_template('new_list.html', title=title)
-        elif 1 <= len(title) <= 100:
-            session['lists'].append({
-                'id': str(uuid4()),
-                'title': title,
-                'todos': []
-            })
-            session.modified = True
-            flash(f'{request.form.get('list_title').strip()} has been added!', 'success')
-        else:
-            flash('Bad title. Title should be between 1 and 100 characters.', 'error')
-            return render_template('new_list.html', title=title)
-    return redirect(url_for('lists'))
+
+        session['lists'].append({
+            'id': str(uuid4()),
+            'title': title,
+            'todos': []
+        })
+        session.modified = True
+        flash(f'{request.form.get('list_title').strip()} has been added!', 'success')
+        return redirect(url_for('lists'))
 
 @app.route('/lists/new')
 def new_list():
@@ -44,6 +43,7 @@ def new_list():
 def list_details(list_id):
     lst = [lst for lst in session['lists'] if lst['id'] == list_id][0]
     return str(lst)
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=5003)
