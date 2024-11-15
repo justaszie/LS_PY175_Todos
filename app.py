@@ -2,6 +2,7 @@ from flask import Flask, g, render_template, redirect, url_for, request, session
 from uuid import uuid4
 from utils import *
 from werkzeug.exceptions import NotFound
+from functools import wraps
 
 app = Flask(__name__)
 app.secret_key = 'secret1'
@@ -16,6 +17,33 @@ def list_utilities_processor():
     return {'is_list_completed': is_list_completed,
             }
 
+def require_list(f):
+    @wraps(f)
+
+    def wrapper(*args, **kwargs):
+        list_id = kwargs.get('list_id')
+        lst = get_list_by_id(list_id, session['lists'])
+        if lst:
+            return f(lst=lst, *args, **kwargs)
+        else:
+            abort(404, description="List not found.")
+
+    return wrapper
+
+def require_todo(f):
+    @wraps(f)
+
+    @require_list
+    def wrapper(lst, *args, **kwargs):
+        todo_id = kwargs.get('todo_id')
+        todo = get_todo_by_id(todo_id, lst['todos'])
+        if not todo:
+            abort(404, description="Todo not found.")
+        return f(todo=todo, lst=lst, *args, **kwargs)
+
+    return wrapper
+
+
 @app.route("/")
 def index():
     return redirect(url_for('lists'))
@@ -23,8 +51,9 @@ def index():
 @app.route("/lists", methods=['GET', 'POST'])
 def lists():
     if request.method == 'GET':
+        lists = sort_items(session['lists'], is_list_completed)
         return render_template('lists.html',
-                               lists=session['lists'],
+                               lists=lists,
                                count_todos_remaining=count_todos_remaining)
     if request.method == 'POST':
         title = request.form.get('list_title').strip()
@@ -48,13 +77,10 @@ def new_list():
 
 
 @app.route('/lists/<list_id>')
-def list_details(list_id):
-    lst = get_list_by_id(list_id, session['lists'])
-    if lst:
-        return render_template('list.html', lst=lst)
-    else:
-        abort(404, description="List not found.")
-        # raise NotFound(description="List not found.")
+@require_list
+def list_details(lst, list_id):
+    todos = sort_items(lst['todos'], is_todo_completed)
+    return render_template('list.html', lst=lst, todos=todos)
 
 
 @app.errorhandler(404)
@@ -63,13 +89,9 @@ def not_found(error):
 
 
 @app.route('/lists/<list_id>/complete_all', methods=['POST'])
-def complete_all_todos(list_id):
-    # 1. Validate list
-    todo_list = get_list_by_id(list_id, session['lists'])
-    if not todo_list:
-        abort(404, description='List not found.')
-
-    for todo in todo_list['todos']:
+@require_list
+def complete_all_todos(lst, list_id):
+    for todo in lst['todos']:
         todo['completed'] = True
 
     session.modified = True
@@ -78,53 +100,38 @@ def complete_all_todos(list_id):
     return redirect(url_for('list_details', list_id=list_id))
 
 @app.route('/lists/<list_id>/edit', methods=['GET', 'POST'])
-def edit_list(list_id):
-    todo_list = get_list_by_id(list_id, session['lists'])
-    if not todo_list:
-        abort(404, description='List not found.')
+@require_list
+def edit_list(lst, list_id):
 
     if request.method == 'GET':
-        return render_template('edit_list.html', lst=todo_list)
+        return render_template('edit_list.html', lst=lst)
 
     if request.method == 'POST':
         list_title = request.form.get('list_title').strip()
         error = error_for_list_title(list_title, session['lists'])
         if error:
             flash(error, 'error')
-            return render_template('edit_list.html', lst=todo_list)
+            return render_template('edit_list.html', lst=lst)
 
-        todo_list['title'] = list_title
+        lst['title'] = list_title
         session.modified = True
         flash('List title changed successfully', 'success')
 
         return redirect(url_for('list_details', list_id=list_id))
 
 @app.route('/lists/<list_id>/delete', methods=['POST'])
-def delete_list(list_id):
-    todo_list = get_list_by_id(list_id, session['lists'])
-    if not todo_list:
-        abort(404, description="List not found.")
-
-    session['lists'].remove(todo_list)
+@require_list
+def delete_list(lst, list_id):
+    session['lists'].remove(lst)
     session.modified = True
-    flash(f'List "{todo_list['title']}" deleted successfully.', 'success')
+    flash(f'List "{lst['title']}" deleted successfully.', 'success')
 
     return redirect(url_for('lists'))
 
+
 @app.route('/lists/<list_id>/todos/<todo_id>/toggle', methods=['POST'])
-def toggle_todo(list_id, todo_id):
-     # 1. List validation
-    todo_list = get_list_by_id(list_id, session['lists'])
-    if not todo_list:
-        abort(404, description="List not found.")
-
-    # 2. Todo validation
-    todo = get_todo_by_id(todo_id, todo_list['todos'])
-    if not todo:
-        abort(404, description="Todo not found.")
-
-
-    # 3. Success - changing todo completion state
+@require_todo
+def toggle_todo(lst, todo, list_id, todo_id):
     todo['completed'] = (request.form['completed'] == 'True')
     session.modified = True
     flash('Todo state changed successfully.', 'success')
@@ -133,20 +140,9 @@ def toggle_todo(list_id, todo_id):
 
 
 @app.route('/lists/<list_id>/todos/<todo_id>/delete', methods=['POST'])
-def delete_todo(list_id, todo_id):
-    # 1. List validation
-    todo_list = get_list_by_id(list_id, session['lists'])
-    if not todo_list:
-        abort(404, description="List not found.")
-
-    # 2. Todo validation
-    todo = get_todo_by_id(todo_id, todo_list['todos'])
-    if not todo:
-        abort(404, description="Todo not found.")
-
-
-    # 3. Success - deleting todo
-    todo_list['todos'].remove(todo)
+@require_todo
+def delete_todo(lst, todo, list_id, todo_id):
+    lst['todos'].remove(todo)
     session.modified = True
     flash('Todo deleted.', 'success')
 
@@ -154,25 +150,21 @@ def delete_todo(list_id, todo_id):
 
 # @app.post is same as @app.route(path, methods=['POST'])
 @app.post('/lists/<list_id>/todos')
-def add_todo(list_id):
-
-    # 1. List validation
-    todo_list = get_list_by_id(list_id, session['lists'])
-    if not todo_list:
-        abort(404, description="List not found.")
-    # 2. Todo validation
+@require_list
+def add_todo(lst, list_id):
+    # 1. Todo title validation
     todo_title = request.form.get('todo').strip()
     error = error_for_todo_title(todo_title)
     if error:
         flash(error, 'error')
-        return render_template('list.html', lst=todo_list)
-    # 3. Todo creation
+        return render_template('list.html', lst=lst)
+    # 2. Todo creation
     todo = {
         'id': str(uuid4()),
         'title': todo_title,
         'completed' : False
     }
-    todo_list['todos'].append(todo)
+    lst['todos'].append(todo)
     session.modified = True
     flash('Todo created successfully!', 'success')
 

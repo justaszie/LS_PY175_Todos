@@ -25,3 +25,17 @@ def count_todos_remaining(lst):
 
 def is_list_completed(lst):
     return len(lst['todos']) >= 1 and count_todos_remaining(lst) == 0
+
+def is_todo_completed(todo):
+    return todo['completed']
+
+def sort_items(items, completed_callback):
+    sorted_items = sorted(items, key=lambda item:item['title'].lower())
+
+    incomplete_items = [item for item in sorted_items
+                        if not completed_callback(item)]
+
+    complete_items = [item for item in sorted_items
+                        if completed_callback(item)]
+
+    return incomplete_items + complete_items

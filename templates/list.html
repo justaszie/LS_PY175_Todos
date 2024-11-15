@@ -19,7 +19,7 @@
             </ul>
         </header>
         <ul>
-            {% for todo in lst['todos'] %}
+            {% for todo in todos %}
                 <li class="{{ 'complete' if todo['completed'] else ''}}">
                     <form action="{{url_for('toggle_todo', list_id=lst['id'], todo_id=todo['id'])}}"
                             method="post"
