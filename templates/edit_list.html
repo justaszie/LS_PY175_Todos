@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<!-- TODO - most likely replace the attributes here based on css  -->
+<section id="todos">
+    <header>
+        <h2>Editing "{{ lst['title'] }}"</h2>
+        <ul>
+            <li>
+                <form action="{{url_for('delete_list', list_id=lst['id'])}}"
+                        method="post">
+                        <button class="delete" type="submit">Delete List</button>
+                </form>
+            </li>
+        </ul>
+    </header>
+</section>
+<form action="{{ url_for('edit_list', list_id=lst['id']) }}" method="POST">
+    <dl>
+        <dt>
+            <label for="todo_title">Enter the new title for the list:</label>
+        </dt>
+        <dd>
+            <input type="text" name="list_title" placeholder="List Title"
+                value="{{ request.form.list_title if request.form.list_title else lst['title'] }}" />
+        </dd>
+    </dl>
+    <fieldset class="actions">
+        <input type="submit" value="Save">
+        <a href="{{ url_for('list_details', list_id=lst['id']) }}">Cancel</a>
+    </fieldset>
+</form>
+{% endblock %}
