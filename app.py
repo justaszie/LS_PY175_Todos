@@ -1,8 +1,8 @@
 from flask import Flask, g, render_template, redirect, url_for, request, session, flash, abort
 from uuid import uuid4
 from utils import *
-from werkzeug.exceptions import NotFound
 from functools import wraps
+import os
 
 app = Flask(__name__)
 app.secret_key = 'secret1'
@@ -171,4 +171,7 @@ def add_todo(lst, list_id):
     return redirect(url_for('list_details', list_id=list_id))
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5003)
+    if os.environ.get('FLASK_ENV' == 'production'):
+        app.run(debug=False)
+    else:
+        app.run(debug=True, port=5003)
